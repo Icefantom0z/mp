@@ -1,0 +1,94 @@
+import os
+import textwrap
+import logging
+from dotenv import load_dotenv
+import discord
+from discord.ext import commands
+from script import insert_keyword, fetch_all_keywords, delete_keyword
+
+load_dotenv()
+
+ICEFANTOM_USER_ID = 7616386027
+ASHKN_USER_ID = 5459678848
+
+env = os.environ.get("ENV")
+TOKEN = os.environ.get("DISCORD_TOKEN_DEV") if env == "dev" else os.environ.get("DISCORD_TOKEN")
+
+intents = discord.Intents.default()
+intents.message_content = True  # belangrijk voor het lezen van berichten
+
+bot = commands.Bot(command_prefix='/', intents=intents)
+
+def is_authorized(ctx):
+    return ctx.author.id in [ICEFANTOM_USER_ID, ASHKN_USER_ID]
+
+@bot.event
+async def on_ready():
+    print(f"Bot is ingelogd als {bot.user}")
+
+@bot.command(name="start")
+async def start(ctx):
+    if not is_authorized(ctx):
+        return
+
+    message = textwrap.dedent("""
+        Welcome to The Markplaats BOT.
+        This bot notifies you about new listings on https://marktplaats.nl/.
+
+        Usage:
+        /start : shows you this message
+        /setkeyword <KEYWORD> : add a keyword that you want to search new listings for.
+        Example: `/setkeyword car` will notify you about new listings with the keyword 'car'
+        /listkeywords: show all saved keywords
+        /deletekeyword <KEYWORD>: delete a keyword and stop getting notified for it
+    """)
+    await ctx.send(message)
+
+@bot.command(name="setkeyword")
+async def set_keyword(ctx, *, keyword: str = None):
+    if not is_authorized(ctx):
+        return
+
+    if not keyword:
+        await ctx.send("Usage: /setkeyword <keyword>")
+        return
+
+    print("Received new keyword:", keyword)
+    res = insert_keyword(keyword)
+    if res:
+        await ctx.send(f"✅ Successfully inserted `{keyword}` into database.")
+    else:
+        await ctx.send("❌ Something went wrong. Please try again.")
+
+@bot.command(name="listkeywords")
+async def list_keywords(ctx):
+    if not is_authorized(ctx):
+        return
+
+    try:
+        res = fetch_all_keywords()
+        keywords = [row["keyword"] for row in res if res]
+        keywords_string = "\n".join(keywords)
+        response = f"📌 Keywords:\n{keywords_string}"
+        await ctx.send(response)
+    except Exception as e:
+        print(e)
+        await ctx.send("⚠️ An error occurred while fetching keywords.")
+
+@bot.command(name="deletekeyword")
+async def delete_keyword_cmd(ctx, *, keyword: str = None):
+    if not is_authorized(ctx):
+        return
+
+    if not keyword:
+        await ctx.send("Usage: /deletekeyword <keyword>")
+        return
+
+    print("Received keyword to delete:", keyword)
+    res = delete_keyword(keyword=keyword)
+    if res:
+        await ctx.send(f"🗑️ Successfully deleted `{keyword}` from database.")
+    else:
+        await ctx.send("❌ Something went wrong. Please try again.")
+
+bot.run(TOKEN)
